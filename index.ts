@@ -1,11 +1,9 @@
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
-import { HermesClient } from "@pythnetwork/hermes-client";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
-
-const hermes = new HermesClient("https://hermes.pyth.network", {});
+import { HermesWS } from "./hermes_ws";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -130,27 +128,6 @@ const strategy = new Strategy(solana, dlmm, userKeypair, {
   rebalanceThreshold: Number(process.env.REBALANCE_THRESHOLD!), // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
 });
 
-const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
-  parsed: true,
-});
+const hermes = new HermesWS("https://hermes.pyth.network", strategy, selectedPool.priceFeeds);
 
-eventSource.onmessage = async (event) => {
-  try {
-    const eventData = JSON.parse(event.data).parsed;
-
-    // NOTE: We have to make sure the `[0]` is the base token and `[1]` is the quote token
-    const marketPrice =
-      eventData.length > 1
-        ? eventData[0].price.price / eventData[1].price.price
-        : eventData[0].price.price / 10 ** (-1 * eventData[0].price.expo);
-
-    await strategy.run(marketPrice);
-  } catch (error) {
-    console.error("Error parsing event data:", error);
-  }
-};
-
-eventSource.onerror = (error) => {
-  console.error("Error receiving updates:", error);
-  eventSource.close();
-};
+await hermes.connect();
