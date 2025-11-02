@@ -17,6 +17,7 @@ primary_region = 'ams'
   max_machines_running = 1
   processes = ['app']
 
+
 [vm]
   memory = '1gb'
   cpu_kind = 'shared'
