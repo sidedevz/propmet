@@ -1,12 +1,9 @@
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
-import { HermesClient } from "@pythnetwork/hermes-client";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
-import { onError, onMessage } from "./handlers";
-
-const hermes = new HermesClient("https://hermes.pyth.network", {});
+import { HermesWS } from "./handlers";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -131,10 +128,6 @@ const strategy = new Strategy(solana, dlmm, userKeypair, {
   rebalanceThreshold: Number(process.env.REBALANCE_THRESHOLD!), // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
 });
 
-const eventSource = await hermes.getPriceUpdatesStream(selectedPool.priceFeeds, {
-  parsed: true,
-});
+const hermes = new HermesWS("https://hermes.pyth.network", strategy, selectedPool.priceFeeds);
 
-eventSource.onmessage = async (event) => onMessage(event, strategy);
-
-eventSource.onerror = async (error) => onError(error, eventSource, hermes, selectedPool, strategy);
+await hermes.connect();
