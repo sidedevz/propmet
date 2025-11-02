@@ -1,14 +1,11 @@
 import { HermesClient } from "@pythnetwork/hermes-client";
 import type { Strategy } from "./strategy";
-import { EventSource, type ErrorEvent } from "eventsource";
-import { retry } from "./retry";
+import type { EventSource, ErrorEvent } from "eventsource";
 
 export class HermesWS {
   private client: HermesClient;
-  private eventSource: EventSource | undefined;
+  private eventSource: EventSource | null = null;
   private strategy: Strategy;
-  private isReconnecting = false;
-
   constructor(
     url: string,
     strategy: Strategy,
@@ -19,12 +16,17 @@ export class HermesWS {
   }
 
   async connect() {
-    this.eventSource = await this.client.getPriceUpdatesStream(this.priceFeeds, {
+    if (this.eventSource == null) {
+      return;
+    }
+
+    const newEventSource = await this.client.getPriceUpdatesStream(this.priceFeeds, {
       parsed: true,
     });
 
     this.eventSource.onopen = () => {
       console.log("🟢 Connected to price streams");
+      this.eventSource = newEventSource;
     };
 
     this.eventSource.onmessage = async (event) => {
@@ -59,68 +61,21 @@ export class HermesWS {
   private async onError(error: ErrorEvent) {
     console.error("Error receiving updates:", error);
 
-    // Control to avoid race conditions
-    if (this.isReconnecting || this.eventSource?.readyState === EventSource.OPEN) {
-      return;
+    if (this.eventSource != null) {
+      this.eventSource.onmessage = null;
+      this.eventSource.onerror = null;
+      this.eventSource.close();
+      this.eventSource = null;
     }
 
     const reconnectDelay = 1000; // ms
+    const maxRetries = 5;
+    let retries = 0;
 
-    this.isReconnecting = true;
-
-    try {
-      // Attempt to reconnect after a short delay
-      await retry(
-        async () => {
-          console.log(`Attempting to reconnect in ${reconnectDelay / 1000} seconds...`);
-
-          const currentEventSource = this.eventSource;
-          if (currentEventSource != null) {
-            currentEventSource.onmessage = null;
-            currentEventSource.onerror = null;
-            currentEventSource.close();
-          }
-
-          await this.connect(); // Always try to reconnect, even if eventSource was null
-        },
-        {
-          initialDelay: reconnectDelay,
-          maxRetries: 3,
-          maxDelay: 12000,
-        },
-      );
-
-      const connected = await this.checkConnection();
-
-      if (!connected) {
-        console.error("💥 Error reconnecting - could not connect to event source");
-        throw new Error("Error reconnecting");
-      }
-    } finally {
-      this.isReconnecting = false; // Always reset flag, even on error
+    while (this.eventSource == null && retries < maxRetries) {
+      await this.connect();
+      await new Promise((resolve) => setTimeout(resolve, reconnectDelay));
+      retries++;
     }
-  }
-
-  // Loop for 3 seconds max so see if WS is connected
-  async checkConnection() {
-    const timeout = 3000;
-    let progressTime = 0;
-
-    if (this.eventSource == null) {
-      return false;
-    }
-
-    while (progressTime < timeout) {
-      if (this.eventSource.readyState === EventSource.OPEN) {
-        return true;
-      }
-
-      console.log("Waiting for endpoint to connect");
-      progressTime += 100;
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-
-    return false;
   }
 }
