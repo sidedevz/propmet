@@ -16,7 +16,7 @@ export class HermesWS {
   }
 
   async connect() {
-    if (this.eventSource == null) {
+    if (this.eventSource != null) {
       return;
     }
 
@@ -24,18 +24,18 @@ export class HermesWS {
       parsed: true,
     });
 
-    this.eventSource.onopen = () => {
+    newEventSource.onopen = () => {
       console.log("🟢 Connected to price streams");
       this.eventSource = newEventSource;
     };
 
-    this.eventSource.onmessage = async (event) => {
+    newEventSource.onmessage = async (event) => {
       this.onMessage(event, this.strategy).catch((err) => {
         console.error("Unhandled error in onMessage:", err);
       });
     };
 
-    this.eventSource.onerror = async (error) => {
+    newEventSource.onerror = async (error) => {
       this.onError(error).catch((err) => {
         console.error("Unhandled error in onError:", err);
       });
