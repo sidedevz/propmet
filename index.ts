@@ -1,6 +1,6 @@
 import DLMM, { StrategyType } from "@meteora-ag/dlmm";
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { Strategy } from "./strategy";
+import { Strategy, type StrategyConfig } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
 import { HermesWS } from "./hermes_ws";
@@ -19,41 +19,6 @@ if (!process.env.SECRET_KEY) {
 
 if (!process.env.POOL) {
   throw new Error("POOL environment variable is not set.");
-}
-
-if (!process.env.PRICE_RANGE_DELTA) {
-  throw new Error("PRICE_RANGE_DELTA environment variable is not set.");
-}
-
-if (!process.env.INVENTORY_SKEW_THRESHOLD) {
-  throw new Error("INVENTORY_SKEW_THRESHOLD environment variable is not set.");
-}
-
-if (!process.env.REBALANCE_THRESHOLD) {
-  throw new Error("REBALANCE_THRESHOLD environment variable is not set.");
-}
-
-if (!process.env.STRATEGY) {
-  throw new Error("STRATEGY_TYPE environment variable is not set.");
-}
-
-if (!process.env.MAX_REBALANCE_SLIPPAGE) {
-  throw new Error("MAX_REBALANCE_SLIPPAGE environment variable is not set.");
-}
-
-let strategyType: StrategyType = StrategyType.BidAsk;
-switch (process.env.STRATEGY) {
-  case "bidask":
-    strategyType = StrategyType.BidAsk;
-    break;
-  case "curve":
-    strategyType = StrategyType.Curve;
-    break;
-  case "spot":
-    strategyType = StrategyType.Spot;
-    break;
-  default:
-    throw new Error(`Invalid strategy: ${process.env.STRATEGY}`);
 }
 
 const secretKey = Uint8Array.from(process.env.SECRET_KEY.split(",").map((v) => Number(v.trim())));
@@ -96,43 +61,72 @@ const MET_USDC_PRICE_FEEDS = [
   "0x0292e0f405bcd4a496d34e48307f6787349ad2bcd8505c3d3a9f77d81a67a682",
 ];
 
-const POOL_CONFIGS: Record<string, { priceFeeds: string[]; poolAddress: PublicKey }> = {
+const POOL_CONFIGS: Record<
+  string,
+  { priceFeeds: string[]; poolAddress: PublicKey } & StrategyConfig
+> = {
   "jup/sol": {
     priceFeeds: JUP_SOL_PRICE_FEEDS,
     poolAddress: JUP_SOL_POOL_ADDRESS,
+    priceRangeDelta: 1000,
+    inventorySkewThreshold: 1500,
+    rebalanceThreshold: 8000,
+    maxRebalanceSlippage: 500,
+    type: StrategyType.BidAsk,
   },
   "jup/usdc": {
     priceFeeds: JUP_USDC_PRICE_FEEDS,
     poolAddress: JUP_USDC_POOL_ADDRESS,
+    priceRangeDelta: 1000,
+    inventorySkewThreshold: 1500,
+    rebalanceThreshold: 8000,
+    maxRebalanceSlippage: 500,
+    type: StrategyType.BidAsk,
   },
   "met/usdc": {
     priceFeeds: MET_USDC_PRICE_FEEDS,
     poolAddress: MET_USDC_POOL_ADDRESS,
+    priceRangeDelta: 500,
+    inventorySkewThreshold: 1500,
+    rebalanceThreshold: 8000,
+    maxRebalanceSlippage: 500,
+    type: StrategyType.BidAsk,
   },
   "fluid/sol": {
     priceFeeds: FLUID_SOL_PRICE_FEEDS,
     poolAddress: FLUID_SOL_POOL_ADDRESS,
+    priceRangeDelta: 3000,
+    inventorySkewThreshold: 1500,
+    rebalanceThreshold: 3000,
+    maxRebalanceSlippage: 500,
+    type: StrategyType.BidAsk,
   },
 };
 
-const selectedPool = POOL_CONFIGS[process.env.POOL!];
-if (!selectedPool) {
-  console.error(
-    `Pool ${process.env.POOL} not found. Available pools are: ${Object.keys(POOL_CONFIGS).join(", ")}`,
-  );
+const selectedPools = process.env.POOL!.split(",");
+if (selectedPools.length === 0) {
+  console.error("No pools selected");
   process.exit(1);
 }
 
-const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
+const selectedPoolConfigs = selectedPools
+  .map((pool) => POOL_CONFIGS[pool])
+  .filter((pool) => pool != null);
+if (selectedPoolConfigs.length !== selectedPools.length) {
+  console.error("Missing pool configs for some of the selected pools");
+  process.exit(1);
+}
 
-const strategy = new Strategy(solana, dlmm, userKeypair, {
-  priceRangeDelta: Number(process.env.PRICE_RANGE_DELTA!), // determines how many bins around active_bin to put liquidity in
-  inventorySkewThreshold: Number(process.env.INVENTORY_SKEW_THRESHOLD!), // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
-  type: strategyType, // Concentrate liquidity around oracle price
-  rebalanceThreshold: Number(process.env.REBALANCE_THRESHOLD!), // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
-  maxRebalanceSlippage: Number(process.env.MAX_REBALANCE_SLIPPAGE!), // Determines the maximum slippage allowed for the rebalance transaction.
-});
+const strategies = await Promise.all(
+  selectedPoolConfigs.map(async (poolConfig) => {
+    const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
+    return {
+      strategy: new Strategy(solana, dlmm, userKeypair, poolConfig),
+      priceFeeds: poolConfig.priceFeeds,
+    };
+  }),
+);
 
-const hermes = new HermesWS("https://hermes.pyth.network", strategy, selectedPool.priceFeeds);
+const hermes = new HermesWS("https://hermes.pyth.network", strategies);
 
 await hermes.connect();

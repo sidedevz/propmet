@@ -5,14 +5,12 @@ import type { EventSource, ErrorEvent } from "eventsource";
 export class HermesWS {
   private client: HermesClient;
   private eventSource: EventSource | null = null;
-  private strategy: Strategy;
+
   constructor(
     url: string,
-    strategy: Strategy,
-    readonly priceFeeds: string[],
+    private readonly strategies: { strategy: Strategy; priceFeeds: string[] }[],
   ) {
     this.client = new HermesClient(url, {});
-    this.strategy = strategy;
   }
 
   async connect() {
@@ -20,9 +18,12 @@ export class HermesWS {
       return;
     }
 
-    const newEventSource = await this.client.getPriceUpdatesStream(this.priceFeeds, {
-      parsed: true,
-    });
+    const newEventSource = await this.client.getPriceUpdatesStream(
+      this.strategies.flatMap((strategy) => strategy.priceFeeds),
+      {
+        parsed: true,
+      },
+    );
 
     newEventSource.onopen = () => {
       console.log("🟢 Connected to price streams");
@@ -30,9 +31,60 @@ export class HermesWS {
     };
 
     newEventSource.onmessage = async (event) => {
-      this.onMessage(event, this.strategy).catch((err) => {
-        console.error("Unhandled error in onMessage:", err);
-      });
+      try {
+        const eventData = JSON.parse(event.data).parsed;
+
+        for (const strategy of this.strategies) {
+          let marketPrice: number;
+
+          if (strategy.priceFeeds.length === 1) {
+            const priceFeed = strategy.priceFeeds[0];
+            const priceEvent = eventData.find(
+              (priceEvent: any) => priceEvent.id === priceFeed?.slice(2),
+            );
+
+            if (priceEvent == null) {
+              console.error(
+                "Price event not found for strategy:",
+                strategy.strategy.baseToken.mint.toString(),
+              );
+              continue;
+            }
+
+            marketPrice = priceEvent.price.price / 10 ** (-1 * priceEvent.price.expo);
+          } else {
+            const basePriceFeed = strategy.priceFeeds[0];
+            const quotePriceFeed = strategy.priceFeeds[1];
+
+            const basePriceEvent = eventData.find(
+              (priceEvent: any) => priceEvent.id === basePriceFeed?.slice(2),
+            );
+            const quotePriceEvent = eventData.find(
+              (priceEvent: any) => priceEvent.id === quotePriceFeed?.slice(2),
+            );
+
+            if (basePriceEvent == null || quotePriceEvent == null) {
+              console.error(
+                "Price event not found for strategy:",
+                strategy.strategy.baseToken.mint.toString(),
+              );
+              continue;
+            }
+
+            const basePrice = basePriceEvent.price.price / 10 ** (-1 * basePriceEvent.price.expo);
+            const quotePrice =
+              quotePriceEvent.price.price / 10 ** (-1 * quotePriceEvent.price.expo);
+
+            marketPrice = basePrice / quotePrice;
+          }
+
+          if (marketPrice != null) {
+            await strategy.strategy.run(marketPrice);
+          }
+        }
+      } catch (error) {
+        console.error("Error parsing event data:", error);
+      }
     };
 
     newEventSource.onerror = async (error) => {
@@ -40,22 +92,6 @@ export class HermesWS {
         console.error("Unhandled error in onError:", err);
       });
     };
-  }
-
-  private async onMessage(event: MessageEvent<any>, strategy: Strategy) {
-    try {
-      const eventData = JSON.parse(event.data).parsed;
-
-      // NOTE: We have to make sure the `[0]` is the base token and `[1]` is the quote token
-      const marketPrice =
-        eventData.length > 1
-          ? eventData[0].price.price / eventData[1].price.price
-          : eventData[0].price.price / 10 ** (-1 * eventData[0].price.expo);
-
-      await strategy.run(marketPrice);
-    } catch (error) {
-      console.error("Error parsing event data:", error);
-    }
   }
 
   private async onError(error: ErrorEvent) {

@@ -1,4 +1,8 @@
-import DLMM, { type StrategyType, type LbPosition } from "@meteora-ag/dlmm";
+import DLMM, {
+  type StrategyType,
+  type LbPosition,
+  DEFAULT_BIN_PER_POSITION,
+} from "@meteora-ag/dlmm";
 import { Keypair, type PublicKey } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
@@ -15,11 +19,11 @@ export type StrategyConfig = {
 };
 
 export class Strategy {
-  private baseToken: {
+  readonly baseToken: {
     mint: PublicKey;
     decimals: number;
   };
-  private quoteToken: {
+  readonly quoteToken: {
     mint: PublicKey;
     decimals: number;
   };
@@ -171,6 +175,16 @@ export class Strategy {
       ),
       false,
     );
+
+    // If priceRangeDelta is large, we would end up opening too many bins.
+    // I don't see us having positions with more than 70 bins. If we do in the future, we need to update this.
+    // Currently getting some realloc erro when trying to create position with ~100 bins
+    if (new BN(maxBinId - minBinId + 1) > DEFAULT_BIN_PER_POSITION) {
+      console.error(
+        `Max bins per position exceeded: ${maxBinId - minBinId + 1} > ${DEFAULT_BIN_PER_POSITION}`,
+      );
+      return null;
+    }
 
     const positionKeypair = Keypair.generate();
 
