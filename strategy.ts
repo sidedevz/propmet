@@ -156,9 +156,6 @@ export class Strategy {
 
     const { baseBalance, quoteBalance } = inventory;
 
-    const _basePositionValue = (baseBalance / 10 ** this.baseToken.decimals) * marketPrice;
-    const _quotePositionValue = quoteBalance / 10 ** this.quoteToken.decimals;
-
     const minBinPrice = marketPrice * (1 - this.config.priceRangeDelta / 10000);
     const maxBinPrice = marketPrice * (1 + this.config.priceRangeDelta / 10000);
 
