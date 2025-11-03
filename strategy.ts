@@ -11,6 +11,7 @@ export type StrategyConfig = {
   inventorySkewThreshold: number; // in basis points
   type: StrategyType;
   rebalanceThreshold: number; // in basis points
+  maxRebalanceSlippage: number; // in basis points
 };
 
 export class Strategy {
@@ -27,8 +28,6 @@ export class Strategy {
   private positionFetched = false;
 
   private isBusy = false;
-
-  private noThresholdCounter = 0;
 
   constructor(
     private readonly solana: Solana,
@@ -89,37 +88,9 @@ export class Strategy {
     const upperThresholdBin = positionMidBin + numBinsThreshold;
 
     if (marketPriceBinId < lowerThresholdBin || marketPriceBinId > upperThresholdBin) {
-      console.log("Market price crossed threshold, triggering rebalance", {
-        position: this.position.publicKey.toString(),
-        marketPrice,
-        lowerThresholdBin,
-        upperThresholdBin,
-        marketPriceBinId,
-        halfRange,
-        numBinsThreshold,
-      });
-
       await this.safeExecute(async () => {
         await this.rebalancePosition(marketPrice);
       });
-    } else {
-      if (this.noThresholdCounter % 10 === 0) {
-        const rand = Math.random();
-        console.log(
-          `Threshold not crossed, no action needed ${rand < 0.33 ? "🎯" : rand < 0.5 ? "✨" : "🚀"}`,
-          {
-            marketPriceBinId,
-            lowerThresholdBin,
-            upperThresholdBin,
-            shift:
-              marketPriceBinId < positionMidBin
-                ? (marketPriceBinId - positionMidBin) / halfRange
-                : (positionMidBin - marketPriceBinId) / halfRange,
-          },
-        );
-        console.log("================================================");
-      }
-      this.noThresholdCounter++;
     }
   }
 
@@ -134,9 +105,6 @@ export class Strategy {
       );
 
       if (existingPositions.userPositions.length > 0) {
-        if (existingPositions.userPositions.length > 1) {
-          console.warn("Found multiple positions for user, using the first one");
-        }
         this.position = existingPositions.userPositions[0]!;
       }
 
@@ -149,8 +117,6 @@ export class Strategy {
       console.error("Cannot rebalance: no position exists");
       return;
     }
-
-    console.log("Removing liquidity...");
 
     const removeLiquidityTxs = await this.dlmm.removeLiquidity({
       user: this.userKeypair.publicKey,
@@ -183,8 +149,6 @@ export class Strategy {
     marketPrice: number,
     minContextSlot?: number,
   ): Promise<LbPosition | null> {
-    console.log("Creating position...");
-
     const inventory = await this.tryRebalanceInventory({
       marketPrice,
       minContextSlot,
@@ -192,8 +156,8 @@ export class Strategy {
 
     const { baseBalance, quoteBalance } = inventory;
 
-    const basePositionValue = (baseBalance / 10 ** this.baseToken.decimals) * marketPrice;
-    const quotePositionValue = quoteBalance / 10 ** this.quoteToken.decimals;
+    const _basePositionValue = (baseBalance / 10 ** this.baseToken.decimals) * marketPrice;
+    const _quotePositionValue = quoteBalance / 10 ** this.quoteToken.decimals;
 
     const minBinPrice = marketPrice * (1 - this.config.priceRangeDelta / 10000);
     const maxBinPrice = marketPrice * (1 + this.config.priceRangeDelta / 10000);
@@ -210,33 +174,6 @@ export class Strategy {
       ),
       false,
     );
-
-    const marketPriceBinId = this.dlmm.getBinIdFromPrice(
-      Number(
-        DLMM.getPricePerLamport(this.baseToken.decimals, this.quoteToken.decimals, marketPrice),
-      ),
-      false,
-    );
-
-    console.log({
-      positionRatio: basePositionValue / quotePositionValue,
-      minBinId,
-      maxBinId,
-      marketPriceBinId,
-      totalRange: maxBinId - minBinId,
-      lowerRange: marketPriceBinId - minBinId,
-      upperRange: maxBinId - marketPriceBinId,
-      minBinPrice,
-      maxBinPrice,
-      strategy: {
-        minBinId,
-        maxBinId,
-        strategyType: this.config.type,
-        singleSidedX: false,
-      },
-      totalBaseAmount: baseBalance,
-      totalQuoteAmount: quoteBalance,
-    });
 
     const positionKeypair = Keypair.generate();
 
@@ -263,12 +200,6 @@ export class Strategy {
     );
     await this.solana.confirmTransactions([createBalancePositionTxHash]);
 
-    console.log(
-      "Opened position",
-      positionKeypair.publicKey.toBase58(),
-      createBalancePositionTxHash,
-    );
-
     const newPosition = await retry(
       async () => {
         const positions = await this.dlmm.getPositionsByUserAndLbPair(this.userKeypair.publicKey);
@@ -292,8 +223,6 @@ export class Strategy {
         maxDelay: 5000,
       },
     );
-
-    console.log("found new position: ", newPosition.publicKey.toString());
 
     return newPosition;
   }
@@ -347,8 +276,6 @@ export class Strategy {
     const difference = Math.abs(1 - baseValue / quoteValue);
 
     if (difference > this.config.inventorySkewThreshold / 10000) {
-      console.log(`Discrepancy of ${difference} found, rebalancing...`);
-
       const { inputMint, outputMint, inputDecimals } =
         baseValue > quoteValue
           ? {
@@ -373,8 +300,6 @@ export class Strategy {
        */
       const inputAmount = inputMint === this.baseToken.mint ? swapValue / marketPrice : swapValue; // this is in terms of inputMint token
 
-      console.log(`Swapping ${inputAmount} of token ${inputMint} for token ${outputMint}`);
-
       const jupUltraOrder = await retry(
         async () => {
           return await getJupUltraOrder(
@@ -382,12 +307,13 @@ export class Strategy {
             outputMint,
             inputAmount * 10 ** inputDecimals, // converting to raw token amount
             this.userKeypair.publicKey,
+            this.config.maxRebalanceSlippage,
           );
         },
         {
-          maxRetries: 3,
+          maxRetries: 30,
           initialDelay: 1000,
-          maxDelay: 5000,
+          maxDelay: 5 * 60 * 1000, // 5 minutes
         },
       );
 
@@ -398,12 +324,7 @@ export class Strategy {
       );
 
       const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
-      console.log("Successfully rebalanced inventory...", {
-        rebalanceStats: {
-          baseChange: updatedInventory.baseBalance - inventory.baseBalance,
-          quoteChange: updatedInventory.quoteBalance - inventory.quoteBalance,
-        },
-      });
+
       return updatedInventory;
     }
 

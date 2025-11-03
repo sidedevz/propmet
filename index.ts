@@ -37,6 +37,10 @@ if (!process.env.STRATEGY) {
   throw new Error("STRATEGY_TYPE environment variable is not set.");
 }
 
+if (!process.env.MAX_REBALANCE_SLIPPAGE) {
+  throw new Error("MAX_REBALANCE_SLIPPAGE environment variable is not set.");
+}
+
 let strategyType: StrategyType = StrategyType.BidAsk;
 switch (process.env.STRATEGY) {
   case "bidask":
@@ -124,8 +128,9 @@ const dlmm = await DLMM.create(solana.connection, selectedPool.poolAddress);
 const strategy = new Strategy(solana, dlmm, userKeypair, {
   priceRangeDelta: Number(process.env.PRICE_RANGE_DELTA!), // determines how many bins around active_bin to put liquidity in
   inventorySkewThreshold: Number(process.env.INVENTORY_SKEW_THRESHOLD!), // Determines when to rebalance the inventory. If the difference between the base and quote tokens is greater than this threshold, the inventory will be rebalanced.
-  type: strategyType, //Concentrate liquidity around oracle price
+  type: strategyType, // Concentrate liquidity around oracle price
   rebalanceThreshold: Number(process.env.REBALANCE_THRESHOLD!), // Determines when to rebalance the position. If the market price is more than this threshold away from the center of our position, the position will be rebalanced.
+  maxRebalanceSlippage: Number(process.env.MAX_REBALANCE_SLIPPAGE!), // Determines the maximum slippage allowed for the rebalance transaction.
 });
 
 const hermes = new HermesWS("https://hermes.pyth.network", strategy, selectedPool.priceFeeds);
