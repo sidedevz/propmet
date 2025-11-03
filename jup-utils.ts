@@ -6,6 +6,7 @@ export async function getJupUltraOrder(
   outPutMint: PublicKey,
   inputAmount: number,
   taker: PublicKey,
+  maxSlippage: number,
 ) {
   const orderResponse = await fetch(
     `https://lite-api.jup.ag/ultra/v1/order?inputMint=${inputMint.toString()}&outputMint=${outPutMint.toString()}&amount=${Math.floor(inputAmount)}&taker=${taker.toString()}`,
@@ -17,6 +18,7 @@ export async function getJupUltraOrder(
   const response = (await orderResponse.json()) as {
     transaction: string;
     requestId: string;
+    slippageBps: number;
     errorMessage?: string;
   };
 
@@ -25,6 +27,11 @@ export async function getJupUltraOrder(
       `Error getting ultra order for ${inputMint} of ${inputAmount} tokens. Error ${response.errorMessage}`,
     );
   }
+
+  if (response.slippageBps > maxSlippage) {
+    throw new Error(`Slippage ${response.slippageBps} is greater than max slippage ${maxSlippage}`);
+  }
+
   return response;
 }
 
