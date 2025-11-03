@@ -173,7 +173,7 @@ export async function getTokenBalance(
     }
 
     // Always leave 0.1 SOL in the wallet
-    const solBalance = Math.max(0, Number(data.result.value) - 100_000_000); // Subtract 0.1 SOL to account for rent
+    const solBalance = Math.max(0, Number(data.result.value) - 100_000_000);
 
     return solBalance + tokenAccountBalance;
   }
