@@ -34,54 +34,66 @@ export class HermesWS {
       try {
         const eventData = JSON.parse(event.data).parsed;
 
-        for (const strategy of this.strategies) {
-          let marketPrice: number;
+        const marketStrategyPair: Array<{ marketPrice: number; strategy: Strategy } | null> =
+          this.strategies.map((strategy) => {
+            let marketPrice: number;
 
-          if (strategy.priceFeeds.length === 1) {
-            const priceFeed = strategy.priceFeeds[0];
-            const priceEvent = eventData.find(
-              (priceEvent: any) => priceEvent.id === priceFeed?.slice(2),
-            );
-
-            if (priceEvent == null) {
-              console.error(
-                "Price event not found for strategy:",
-                strategy.strategy.baseToken.mint.toString(),
+            if (strategy.priceFeeds.length === 1) {
+              const priceFeed = strategy.priceFeeds[0];
+              const priceEvent = eventData.find(
+                (priceEvent: any) => priceEvent.id === priceFeed?.slice(2),
               );
-              continue;
+
+              if (priceEvent == null) {
+                console.error(
+                  "Price event not found for strategy:",
+                  strategy.strategy.baseToken.mint.toString(),
+                );
+                return null;
+              }
+
+              marketPrice = priceEvent.price.price / 10 ** (-1 * priceEvent.price.expo);
+            } else {
+              const basePriceFeed = strategy.priceFeeds[0];
+              const quotePriceFeed = strategy.priceFeeds[1];
+
+              const basePriceEvent = eventData.find(
+                (priceEvent: any) => priceEvent.id === basePriceFeed?.slice(2),
+              );
+              const quotePriceEvent = eventData.find(
+                (priceEvent: any) => priceEvent.id === quotePriceFeed?.slice(2),
+              );
+
+              if (basePriceEvent == null || quotePriceEvent == null) {
+                console.error(
+                  "Price event not found for strategy:",
+                  strategy.strategy.baseToken.mint.toString(),
+                );
+                return null;
+              }
+
+              const basePrice = basePriceEvent.price.price / 10 ** (-1 * basePriceEvent.price.expo);
+              const quotePrice =
+                quotePriceEvent.price.price / 10 ** (-1 * quotePriceEvent.price.expo);
+
+              marketPrice = basePrice / quotePrice;
             }
 
-            marketPrice = priceEvent.price.price / 10 ** (-1 * priceEvent.price.expo);
-          } else {
-            const basePriceFeed = strategy.priceFeeds[0];
-            const quotePriceFeed = strategy.priceFeeds[1];
-
-            const basePriceEvent = eventData.find(
-              (priceEvent: any) => priceEvent.id === basePriceFeed?.slice(2),
-            );
-            const quotePriceEvent = eventData.find(
-              (priceEvent: any) => priceEvent.id === quotePriceFeed?.slice(2),
-            );
-
-            if (basePriceEvent == null || quotePriceEvent == null) {
-              console.error(
-                "Price event not found for strategy:",
-                strategy.strategy.baseToken.mint.toString(),
-              );
-              continue;
+            if (marketPrice != null) {
+              return {
+                marketPrice,
+                strategy: strategy.strategy,
+              };
             }
 
-            const basePrice = basePriceEvent.price.price / 10 ** (-1 * basePriceEvent.price.expo);
-            const quotePrice =
-              quotePriceEvent.price.price / 10 ** (-1 * quotePriceEvent.price.expo);
+            return null;
+          });
 
-            marketPrice = basePrice / quotePrice;
-          }
+        const validMarketStrategyPairs = marketStrategyPair.filter((pair) => pair != null);
 
-          if (marketPrice != null) {
-            await strategy.strategy.run(marketPrice);
-          }
-        }
+        await Promise.all(
+          validMarketStrategyPairs.map((pair) => pair.strategy.run(pair.marketPrice)),
+        );
       } catch (error) {
         console.error("Error parsing event data:", error);
       }

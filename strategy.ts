@@ -6,7 +6,7 @@ import DLMM, {
 import { Keypair, type PublicKey } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
-import { SOL_MINT } from "./const";
+import { WSOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
 
@@ -256,18 +256,15 @@ export class Strategy {
     ]);
 
     // Substract 0.05 of rent
-    const baseBalanceNoRent =
-      this.baseToken.mint === SOL_MINT ? baseBalance - 50000000 : baseBalance;
-
-    const quoteBalanceNoRent = this.quoteToken.mint.equals(SOL_MINT)
-      ? quoteBalance - 100000000
+    const quoteBalanceNoRent = this.quoteToken.mint.equals(WSOL_MINT)
+      ? quoteBalance - 50000000
       : quoteBalance;
 
-    const baseValue = (baseBalanceNoRent / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
+    const baseValue = (baseBalance / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
     const quoteValue = quoteBalanceNoRent / 10 ** this.quoteToken.decimals;
 
     return {
-      baseBalance: baseBalanceNoRent,
+      baseBalance,
       quoteBalance: quoteBalanceNoRent,
       baseValue,
       quoteValue,
