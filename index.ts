@@ -48,9 +48,9 @@ const solana = new Solana({
 
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all
 
-const FLUID_USDC_POOL_ADDRESS = new PublicKey("6UhWp9UxnpacCFxQA61ZFwTjpj29XizFEMw5fgoty6mT");
-const HYPE_USDC_POOL_ADDRESS = new PublicKey("DDzyqUudBdtZMkpbELV6meME8M9M2cMgUqc5pAJxKzaG");
-const ZENZEC_USDC_POOL_ADDRESS = new PublicKey("3FYdSeUvYMCd7D2yXCjj3rBYcywU75oPQ3X2u61goqMW");
+const FLUID_USDC_POOL_ADDRESS = new PublicKey("J4hpmK1KQ6GsWotEck1syzU7gM7kZQ5sPctfkY9gV6wW");
+const HYPE_USDC_POOL_ADDRESS = new PublicKey("ANCx141SujgVdbKz9NTEH8F38qWsnyyXsVju64aU3qLB");
+const ZENZEC_USDC_POOL_ADDRESS = new PublicKey("EzKZfPf2ejenpBJoYA5REHBeijLaofsndCJVtj7693aP");
 
 const FLUID_USDC_PRICE_FEEDS = [
   // FLUID-USD
@@ -73,7 +73,7 @@ const POOL_CONFIGS: Record<
     userKeypair: posKeypair1, // IMPORTANT
     priceFeeds: FLUID_USDC_PRICE_FEEDS,
     poolAddress: FLUID_USDC_POOL_ADDRESS,
-    priceRangeDelta: 300,
+    priceRangeDelta: 500,
     inventorySkewThreshold: 3000,
     rebalanceThreshold: 7500,
     maxRebalanceSlippage: 500,
@@ -83,7 +83,7 @@ const POOL_CONFIGS: Record<
     userKeypair: posKeypair2, // IMPORTANT
     priceFeeds: HYPE_USDC_PRICE_FEEDS,
     poolAddress: HYPE_USDC_POOL_ADDRESS,
-    priceRangeDelta: 300,
+    priceRangeDelta: 500,
     inventorySkewThreshold: 3000,
     rebalanceThreshold: 7500,
     maxRebalanceSlippage: 500,
@@ -93,7 +93,7 @@ const POOL_CONFIGS: Record<
     userKeypair: posKeypair3, // IMPORTANT
     priceFeeds: ZEC_USDC_PRICE_FEEDS,
     poolAddress: ZENZEC_USDC_POOL_ADDRESS,
-    priceRangeDelta: 300,
+    priceRangeDelta: 500,
     inventorySkewThreshold: 3000,
     rebalanceThreshold: 7500,
     maxRebalanceSlippage: 500,
