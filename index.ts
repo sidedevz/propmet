@@ -50,7 +50,7 @@ const solana = new Solana({
 
 const FLUID_USDC_POOL_ADDRESS = new PublicKey("J4hpmK1KQ6GsWotEck1syzU7gM7kZQ5sPctfkY9gV6wW");
 const HYPE_USDC_POOL_ADDRESS = new PublicKey("ANCx141SujgVdbKz9NTEH8F38qWsnyyXsVju64aU3qLB");
-const ZENZEC_USDC_POOL_ADDRESS = new PublicKey("EzKZfPf2ejenpBJoYA5REHBeijLaofsndCJVtj7693aP");
+const ZENZEC_USDC_POOL_ADDRESS = new PublicKey("3pss9YFM4tsMR8EAbusPVUZnYMex6jSduivDZUPPLTVr");
 
 const FLUID_USDC_PRICE_FEEDS = [
   // FLUID-USD
