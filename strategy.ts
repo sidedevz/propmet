@@ -1,8 +1,12 @@
-import DLMM, { type StrategyType, type LbPosition } from "@meteora-ag/dlmm";
+import DLMM, {
+  type StrategyType,
+  type LbPosition,
+  DEFAULT_BIN_PER_POSITION,
+} from "@meteora-ag/dlmm";
 import { Keypair, type PublicKey } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
-import { SOL_MINT } from "./const";
+import { WSOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
 
@@ -15,11 +19,11 @@ export type StrategyConfig = {
 };
 
 export class Strategy {
-  private baseToken: {
+  readonly baseToken: {
     mint: PublicKey;
     decimals: number;
   };
-  private quoteToken: {
+  readonly quoteToken: {
     mint: PublicKey;
     decimals: number;
   };
@@ -172,6 +176,16 @@ export class Strategy {
       false,
     );
 
+    // If priceRangeDelta is large, we would end up opening too many bins.
+    // I don't see us having positions with more than 70 bins. If we do in the future, we need to update this.
+    // Currently getting some realloc erro when trying to create position with ~100 bins
+    if (new BN(maxBinId - minBinId + 1) > DEFAULT_BIN_PER_POSITION) {
+      console.error(
+        `Max bins per position exceeded: ${maxBinId - minBinId + 1} > ${DEFAULT_BIN_PER_POSITION}`,
+      );
+      return null;
+    }
+
     const positionKeypair = Keypair.generate();
 
     await this.dlmm.refetchStates();
@@ -242,18 +256,15 @@ export class Strategy {
     ]);
 
     // Substract 0.05 of rent
-    const baseBalanceNoRent =
-      this.baseToken.mint === SOL_MINT ? baseBalance - 50000000 : baseBalance;
-
-    const quoteBalanceNoRent = this.quoteToken.mint.equals(SOL_MINT)
-      ? quoteBalance - 100000000
+    const quoteBalanceNoRent = this.quoteToken.mint.equals(WSOL_MINT)
+      ? quoteBalance - 50000000
       : quoteBalance;
 
-    const baseValue = (baseBalanceNoRent / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
+    const baseValue = (baseBalance / 10 ** this.baseToken.decimals) * price; // Value of base tokens in terms of quote token
     const quoteValue = quoteBalanceNoRent / 10 ** this.quoteToken.decimals;
 
     return {
-      baseBalance: baseBalanceNoRent,
+      baseBalance,
       quoteBalance: quoteBalanceNoRent,
       baseValue,
       quoteValue,

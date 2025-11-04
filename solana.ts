@@ -172,7 +172,8 @@ export async function getTokenBalance(
       throw new Error(`Failed to get sol balance: ${data.error?.message ?? "Unknown error"}`);
     }
 
-    const solBalance = Number(data.result.value);
+    // Always leave 0.05 SOL in the wallet
+    const solBalance = Math.max(0, Number(data.result.value) - 50_000_000);
 
     return solBalance + tokenAccountBalance;
   }
