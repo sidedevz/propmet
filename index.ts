@@ -70,30 +70,30 @@ const POOL_CONFIGS: Record<
   { priceFeeds: string[]; poolAddress: PublicKey; userKeypair: Keypair } & StrategyConfig
 > = {
   "fluid/usdc": {
-    userKeypair: posKeypair1,
+    userKeypair: posKeypair1, // IMPORTANT
     priceFeeds: FLUID_USDC_PRICE_FEEDS,
     poolAddress: FLUID_USDC_POOL_ADDRESS,
-    priceRangeDelta: 1000,
-    inventorySkewThreshold: 3000,
-    rebalanceThreshold: 7500,
-    maxRebalanceSlippage: 500,
-    type: StrategyType.BidAsk,
-  },
-  "zenzec/usdc": {
-    userKeypair: posKeypair2,
-    priceFeeds: ZEC_USDC_PRICE_FEEDS,
-    poolAddress: ZENZEC_USDC_POOL_ADDRESS,
-    priceRangeDelta: 1000,
+    priceRangeDelta: 300,
     inventorySkewThreshold: 3000,
     rebalanceThreshold: 7500,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
   },
   "hype/usdc": {
-    userKeypair: posKeypair3,
+    userKeypair: posKeypair2, // IMPORTANT
     priceFeeds: HYPE_USDC_PRICE_FEEDS,
     poolAddress: HYPE_USDC_POOL_ADDRESS,
-    priceRangeDelta: 1000,
+    priceRangeDelta: 300,
+    inventorySkewThreshold: 3000,
+    rebalanceThreshold: 7500,
+    maxRebalanceSlippage: 500,
+    type: StrategyType.BidAsk,
+  },
+  "zenzec/usdc": {
+    userKeypair: posKeypair3, // IMPORTANT
+    priceFeeds: ZEC_USDC_PRICE_FEEDS,
+    poolAddress: ZENZEC_USDC_POOL_ADDRESS,
+    priceRangeDelta: 300,
     inventorySkewThreshold: 3000,
     rebalanceThreshold: 7500,
     maxRebalanceSlippage: 500,
