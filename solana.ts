@@ -141,7 +141,9 @@ export async function getTokenBalance(
 
   const data: any = await response.json();
   if (data.result == null) {
-    throw new Error(`Failed to get token balance: ${data.error?.message ?? "Unknown error"}`);
+    throw new Error(
+      `Failed to get token balance for ${mint.toBase58()}: ${data.error?.message ?? "Unknown error"}`,
+    );
   }
 
   const tokenAccountBalance =
