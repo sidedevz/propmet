@@ -146,7 +146,18 @@ export class Strategy {
       throw new Error("Failed to confirm transactions");
     }
 
-    this.position = await this.createPosition(marketPrice, maxLandedSlot);
+    // Reset position after remove liquidity tx validated
+    this.position = null;
+
+    try {
+      this.position = await this.createPosition(marketPrice, maxLandedSlot);
+      if (this.position == null) {
+        throw new Error("Failed to create new position after closing old position");
+      }
+    } catch (error) {
+      // Position is already null, but we've closed the old one
+      throw new Error(`Failed to create position after rebalance: ${error}`);
+    }
   }
 
   private async createPosition(
