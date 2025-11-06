@@ -95,7 +95,7 @@ export class HermesWS {
           validMarketStrategyPairs.map((pair) => pair.strategy.run(pair.marketPrice)),
         );
       } catch (error) {
-        console.error("Error parsing event data:", JSON.stringify(error));
+        console.error("Error parsing event data:", error);
       }
     };
 
