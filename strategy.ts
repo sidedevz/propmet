@@ -3,12 +3,13 @@ import DLMM, {
   type LbPosition,
   DEFAULT_BIN_PER_POSITION,
 } from "@meteora-ag/dlmm";
-import { Keypair, type PublicKey } from "@solana/web3.js";
+import { Keypair, Transaction, type PublicKey } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
 import { WSOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
+import type { Logger } from "./logger";
 
 export type StrategyConfig = {
   priceRangeDelta: number; // in basis points
@@ -38,6 +39,7 @@ export class Strategy {
     private readonly dlmm: DLMM,
     private readonly userKeypair: Keypair,
     private readonly config: StrategyConfig,
+    private readonly logger: Logger,
   ) {
     this.baseToken = {
       mint: dlmm.tokenX.mint.address,
@@ -122,15 +124,21 @@ export class Strategy {
       return;
     }
 
-    const removeLiquidityTxs = await this.dlmm.removeLiquidity({
-      user: this.userKeypair.publicKey,
-      position: this.position.publicKey,
-      fromBinId: this.position.positionData.lowerBinId,
-      toBinId: this.position.positionData.upperBinId,
-      bps: new BN(10000),
-      shouldClaimAndClose: true,
-      skipUnwrapSOL: false,
-    });
+    let removeLiquidityTxs: Transaction[] = [];
+
+    try {
+      removeLiquidityTxs = await this.dlmm.removeLiquidity({
+        user: this.userKeypair.publicKey,
+        position: this.position.publicKey,
+        fromBinId: this.position.positionData.lowerBinId,
+        toBinId: this.position.positionData.upperBinId,
+        bps: new BN(10000),
+        shouldClaimAndClose: true,
+        skipUnwrapSOL: false,
+      });
+    } catch (e: any) {
+      this.logger.error("Failure creating removeLiquidity Ixs", e);
+    }
 
     const txs: string[] = [];
     for (const tx of removeLiquidityTxs) {
@@ -154,8 +162,9 @@ export class Strategy {
       if (this.position == null) {
         throw new Error("Failed to create new position after closing old position");
       }
-    } catch (error) {
+    } catch (error: any) {
       // Position is already null, but we've closed the old one
+      this.logger.error("Failed to create position after rebalance", error);
       throw new Error(`Failed to create position after rebalance: ${error}`);
     }
   }
@@ -360,8 +369,10 @@ export class Strategy {
     try {
       const result = await callback();
       return result;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during strategy execution:", error);
+      this.logger.error("Error during strategy execution:", error);
+
       throw error;
     } finally {
       this.isBusy = false;

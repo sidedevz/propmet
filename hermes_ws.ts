@@ -1,6 +1,7 @@
 import { HermesClient } from "@pythnetwork/hermes-client";
 import type { Strategy } from "./strategy";
 import type { EventSource, ErrorEvent } from "eventsource";
+import type { Logger } from "./logger";
 
 export class HermesWS {
   private client: HermesClient;
@@ -9,7 +10,9 @@ export class HermesWS {
   constructor(
     url: string,
     private readonly strategies: { strategy: Strategy; priceFeeds: string[] }[],
+    private readonly logger: Logger,
   ) {
+    this.logger.error("TEst", new Error("test"));
     this.client = new HermesClient(url, {});
   }
 
@@ -45,10 +48,11 @@ export class HermesWS {
               );
 
               if (priceEvent == null) {
-                console.error(
-                  "Price event not found for strategy:",
-                  strategy.strategy.baseToken.mint.toString(),
+                this.logger.error(
+                  `Price event not found for strategy: ${strategy.strategy.baseToken.mint.toString()}`,
+                  new Error(strategy.strategy.baseToken.mint.toString()),
                 );
+
                 return null;
               }
 
@@ -65,10 +69,15 @@ export class HermesWS {
               );
 
               if (basePriceEvent == null || quotePriceEvent == null) {
-                console.error(
-                  "Price event not found for strategy:",
-                  strategy.strategy.baseToken.mint.toString(),
+                const errorMint =
+                  basePriceEvent == null
+                    ? strategy.strategy.baseToken.mint.toString()
+                    : strategy.strategy.quoteToken.mint.toString();
+                this.logger.error(
+                  `Price event not found for mint ${errorMint}`,
+                  new Error(errorMint),
                 );
+
                 return null;
               }
 
@@ -94,20 +103,23 @@ export class HermesWS {
         await Promise.all(
           validMarketStrategyPairs.map((pair) => pair.strategy.run(pair.marketPrice)),
         );
-      } catch (error) {
-        console.error("Error parsing event data:", error);
+      } catch (error: any) {
+        this.logger.error("Error parsing event data:", error);
       }
     };
 
     newEventSource.onerror = async (error) => {
       this.onError(error).catch((err) => {
-        console.error("Unhandled error in onError:", err);
+        this.logger.error("Unhandled error in onError:", err);
       });
     };
   }
 
   private async onError(error: ErrorEvent) {
-    console.error("Error receiving updates:", error);
+    this.logger.error("Error receiving updates:", {
+      message: error.message ?? "Unknown error",
+      ...error,
+    });
 
     if (this.eventSource != null) {
       this.eventSource.onmessage = null;
