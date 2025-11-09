@@ -4,6 +4,8 @@ import { Strategy, type StrategyConfig } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
 import { HermesWS } from "./hermes_ws";
+import { SlackLogger } from "./logger/slack";
+import { ConsoleLogger } from "./logger/console";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -13,15 +15,13 @@ if (!process.env.WRITE_RPC_URL) {
   throw new Error("WRITE_RPC_URL environment variable is not set.");
 }
 
-if (!process.env.SECRET_KEY) {
-  throw new Error("SECRET_KEY environment variable is not set.");
-}
 if (!process.env.POS_SECRET_KEY_1) {
   throw new Error("POS_SECRET_KEY_1 environment variable is not set.");
 }
 if (!process.env.POS_SECRET_KEY_2) {
   throw new Error("POS_SECRET_KEY_2 environment variable is not set.");
 }
+
 if (!process.env.POS_SECRET_KEY_3) {
   throw new Error("POS_SECRET_KEY_3 environment variable is not set.");
 }
@@ -115,16 +115,21 @@ if (selectedPoolConfigs.length !== selectedPools.length) {
   process.exit(1);
 }
 
+const logger =
+  process.env.SLACK_TOKEN == null || process.env.SLACK_ALERT_CHANNEL_ID == null
+    ? new ConsoleLogger()
+    : new SlackLogger(process.env.SLACK_TOKEN, process.env.SLACK_ALERT_CHANNEL_ID);
+
 const strategies = await Promise.all(
   selectedPoolConfigs.map(async (poolConfig) => {
     const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
     return {
-      strategy: new Strategy(solana, dlmm, poolConfig.userKeypair, poolConfig),
+      strategy: new Strategy(solana, dlmm, poolConfig.userKeypair, poolConfig, logger),
       priceFeeds: poolConfig.priceFeeds,
     };
   }),
 );
 
-const hermes = new HermesWS("https://hermes.pyth.network", strategies);
+const hermes = new HermesWS("https://hermes.pyth.network", strategies, logger);
 
 await hermes.connect();
