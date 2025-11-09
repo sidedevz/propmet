@@ -12,7 +12,6 @@ export class HermesWS {
     private readonly strategies: { strategy: Strategy; priceFeeds: string[] }[],
     private readonly logger: Logger,
   ) {
-    this.logger.error("TEst", new Error("test"));
     this.client = new HermesClient(url, {});
   }
 
