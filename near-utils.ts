@@ -95,19 +95,11 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
       recipientType: "DESTINATION_CHAIN",
       deadline: new Date(Date.now() + 30000), // 30s -> Refund to user wallet if swap not done by then
       quoteWaitingTimeMs: 0,
-      // appFees: [
-      // 	{
-      // 		recipient: "recipient.near",
-      // 		fee: 100,
-      // 	},
-      // ],
     }),
   });
 
-  console.log(response);
   if (!response.ok) {
     const t = await response.text();
-    console.log(t);
     throw new Error(`Error obtainign quote: ${t}`);
   }
   const data = (await response.json()) as QuoteResponse;
@@ -153,19 +145,16 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
     );
 
     if (!nearDepositSubmitResponse.ok) {
-      console.error("Errors submitting deposit");
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      continue;
+      throw new Error("Error depositing into NEAR");
     }
 
     depositSubmitData = await nearDepositSubmitResponse.json();
-    console.log("Near deposit submit response status: ", depositSubmitData?.status);
 
     if (depositSubmitData?.status === "SUCCESS") {
       break;
     }
 
-    console.log("Trying again, still not successful");
     start = Date.now() - startFetch;
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
