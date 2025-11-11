@@ -60,9 +60,15 @@ type QuoteResponse = {
   timestamp: string;
 };
 
+const DEPOSIT_TIMEOUT = 30000;
+const JUP_SWAP_SLIPPAGE = 200;
+
 // https://docs.near-intents.org/near-intents/integration/distribution-channels/1click-api#post-v0-quote
 
 export async function swapZenZec(connection: Connection, usdcAmount: string, user: Keypair) {
+  // Convert asset to SOL as NEAR intents force us to create the ATA for the deposit account
+  // and we cannot reclaim rent afterwards
+
   const jupUltraOrderSol = await getJupUltraOrder(
     new PublicKey(USDC_MINT),
     new PublicKey(SOL_MINT),
@@ -91,16 +97,16 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
       refundType: "ORIGIN_CHAIN",
       recipient: user.publicKey,
       connectedWallets: [user.publicKey],
-      sessionId: "pavs_test",
+      sessionId: "propmet_zec",
       recipientType: "DESTINATION_CHAIN",
-      deadline: new Date(Date.now() + 30000), // 30s -> Refund to user wallet if swap not done by then
+      deadline: new Date(Date.now() + DEPOSIT_TIMEOUT), // 30s -> Refund to user wallet if swap not done by then
       quoteWaitingTimeMs: 0,
     }),
   });
 
   if (!response.ok) {
     const t = await response.text();
-    throw new Error(`Error obtainign quote: ${t}`);
+    throw new Error(`Error obtaining quote: ${t}`);
   }
   const data = (await response.json()) as QuoteResponse;
 
@@ -126,9 +132,8 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
 
   let depositSubmitData: any;
 
-  const depositTimeout = 30000;
   let start = 0;
-  while (start < depositTimeout) {
+  while (start < DEPOSIT_TIMEOUT) {
     const startFetch = Date.now();
     const nearDepositSubmitResponse = await fetch(
       "https://1click.chaindefuser.com/v0/deposit/submit",
@@ -145,8 +150,9 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
     );
 
     if (!nearDepositSubmitResponse.ok) {
+      console.log(`Error depositing into NEAR deposit address: ${data.quote.depositAddress}`);
       await new Promise((resolve) => setTimeout(resolve, 2000));
-      throw new Error("Error depositing into NEAR");
+      continue;
     }
 
     depositSubmitData = await nearDepositSubmitResponse.json();
@@ -159,18 +165,14 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
-  // Fetch to double check the success
-  await fetch(
-    `https://1click.chaindefuser.com/v0/status?depositAddress=${data.quote.depositAddress}`,
-  );
-
+  // Convert from ZEC to ZENZEC
   const jupUltraOrder = await getJupUltraOrder(
     new PublicKey(ZEC_MINT),
     new PublicKey(ZENZEC_MINT),
     Number(data.quote.amountOutFormatted) * 10 ** ZCASH_DECIMALS,
     user.publicKey,
-    300,
+    JUP_SWAP_SLIPPAGE,
   );
 
-  return await executeJupUltraOrder(jupUltraOrder.transaction, jupUltraOrder.requestId, user);
+  return executeJupUltraOrder(jupUltraOrder.transaction, jupUltraOrder.requestId, user);
 }
