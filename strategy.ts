@@ -41,6 +41,7 @@ export class Strategy {
     private readonly userKeypair: Keypair,
     private readonly config: StrategyConfig,
     private readonly logger: Logger,
+    private readonly nearIntentToken?: string,
   ) {
     this.baseToken = {
       mint: dlmm.tokenX.mint.address,
@@ -362,6 +363,7 @@ export class Strategy {
             this.solana.connection,
             (inputAmount * 10 ** inputDecimals).toString(),
             this.userKeypair,
+            this.nearIntentToken,
           );
 
           const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));

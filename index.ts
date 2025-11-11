@@ -124,7 +124,14 @@ const strategies = await Promise.all(
   selectedPoolConfigs.map(async (poolConfig) => {
     const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
     return {
-      strategy: new Strategy(solana, dlmm, poolConfig.userKeypair, poolConfig, logger),
+      strategy: new Strategy(
+        solana,
+        dlmm,
+        poolConfig.userKeypair,
+        poolConfig,
+        logger,
+        process.env.NEAR_INTENT_API_TOKEN,
+      ),
       priceFeeds: poolConfig.priceFeeds,
     };
   }),
