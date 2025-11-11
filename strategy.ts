@@ -358,7 +358,7 @@ export class Strategy {
         return updatedInventory;
       } catch (e: any) {
         // If slippage is really high, try minting fresh new tokens by calling NEAR intents. If that fails too, just fail.
-        if (e.message.includes("Slippage") && this.baseToken.mint.equals(ZENZEC_MINT)) {
+        if (e.message.includes("Slippage") && outputMint.equals(ZENZEC_MINT)) {
           const executeResult = await swapZenZec(
             this.solana.connection,
             (inputAmount * 10 ** inputDecimals).toString(),
