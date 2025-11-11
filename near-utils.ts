@@ -66,6 +66,7 @@ const JUP_SWAP_SLIPPAGE = 200;
 // https://docs.near-intents.org/near-intents/integration/distribution-channels/1click-api#post-v0-quote
 
 export async function swapZenZec(connection: Connection, usdcAmount: string, user: Keypair) {
+  console.log("Triggering NEAR intents...");
   // Convert asset to SOL as NEAR intents force us to create the ATA for the deposit account
   // and we cannot reclaim rent afterwards
 
@@ -158,6 +159,7 @@ export async function swapZenZec(connection: Connection, usdcAmount: string, use
     depositSubmitData = await nearDepositSubmitResponse.json();
 
     if (depositSubmitData?.status === "SUCCESS") {
+      console.log(`Successful deposit to ${data.quote.depositAddress}`);
       break;
     }
 
