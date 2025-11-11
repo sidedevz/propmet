@@ -20,6 +20,7 @@ export async function getJupUltraOrder(
     requestId: string;
     slippageBps: number;
     errorMessage?: string;
+    outAmount: string;
   };
 
   if (response.errorMessage != null) {

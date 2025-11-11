@@ -3,13 +3,14 @@ import DLMM, {
   type LbPosition,
   DEFAULT_BIN_PER_POSITION,
 } from "@meteora-ag/dlmm";
-import { Keypair, Transaction, type PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
-import { WSOL_MINT } from "./const";
+import { WSOL_MINT, ZENZEC_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
 import type { Logger } from "./logger";
+import { swapZenZec } from "./near-utils";
 
 export type StrategyConfig = {
   priceRangeDelta: number; // in basis points
@@ -40,6 +41,7 @@ export class Strategy {
     private readonly userKeypair: Keypair,
     private readonly config: StrategyConfig,
     private readonly logger: Logger,
+    private readonly nearIntentToken?: string,
   ) {
     this.baseToken = {
       mint: dlmm.tokenX.mint.address,
@@ -173,12 +175,10 @@ export class Strategy {
     marketPrice: number,
     minContextSlot?: number,
   ): Promise<LbPosition | null> {
-    const inventory = await this.tryRebalanceInventory({
+    const { baseBalance, quoteBalance } = await this.tryRebalanceInventory({
       marketPrice,
       minContextSlot,
     });
-
-    const { baseBalance, quoteBalance } = inventory;
 
     const minBinPrice = marketPrice * (1 - this.config.priceRangeDelta / 10000);
     const maxBinPrice = marketPrice * (1 + this.config.priceRangeDelta / 10000);
@@ -226,6 +226,7 @@ export class Strategy {
     });
 
     createPositionTx.partialSign(this.userKeypair, positionKeypair);
+
     const createBalancePositionTxHash = await this.solana.sendTransaction(
       createPositionTx.serialize().toString("base64"),
     );
@@ -328,32 +329,50 @@ export class Strategy {
        */
       const inputAmount = inputMint === this.baseToken.mint ? swapValue / marketPrice : swapValue; // this is in terms of inputMint token
 
-      const jupUltraOrder = await retry(
-        async () => {
-          return await getJupUltraOrder(
-            inputMint,
-            outputMint,
-            inputAmount * 10 ** inputDecimals, // converting to raw token amount
-            this.userKeypair.publicKey,
-            this.config.maxRebalanceSlippage,
+      try {
+        const jupUltraOrder = await retry(
+          async () => {
+            return await getJupUltraOrder(
+              inputMint,
+              outputMint,
+              inputAmount * 10 ** inputDecimals, // converting to raw token amount
+              this.userKeypair.publicKey,
+              this.config.maxRebalanceSlippage,
+            );
+          },
+          {
+            maxRetries: 30,
+            initialDelay: 1000,
+            maxDelay: 5 * 60 * 1000, // 5 minutes
+          },
+        );
+
+        const executeResult = await executeJupUltraOrder(
+          jupUltraOrder.transaction,
+          jupUltraOrder.requestId,
+          this.userKeypair,
+        );
+
+        const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
+
+        return updatedInventory;
+      } catch (e: any) {
+        // If slippage is really high, try minting fresh new tokens by calling NEAR intents. If that fails too, just fail.
+        if (e.message.includes("Slippage") && outputMint.equals(ZENZEC_MINT)) {
+          const executeResult = await swapZenZec(
+            this.solana.connection,
+            (inputAmount * 10 ** inputDecimals).toString(),
+            this.userKeypair,
+            this.nearIntentToken,
           );
-        },
-        {
-          maxRetries: 30,
-          initialDelay: 1000,
-          maxDelay: 5 * 60 * 1000, // 5 minutes
-        },
-      );
 
-      const executeResult = await executeJupUltraOrder(
-        jupUltraOrder.transaction,
-        jupUltraOrder.requestId,
-        this.userKeypair,
-      );
+          const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
 
-      const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
+          return updatedInventory;
+        }
 
-      return updatedInventory;
+        throw e;
+      }
     }
 
     return inventory;
