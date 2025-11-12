@@ -6,6 +6,7 @@ import { Solana } from "./solana";
 import { HermesWS } from "./hermes_ws";
 import { SlackLogger } from "./logger/slack";
 import { ConsoleLogger } from "./logger/console";
+import { TypeSafeWebSocketClient } from "./regular_ws";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -138,5 +139,24 @@ const strategies = await Promise.all(
 );
 
 const hermes = new HermesWS("https://hermes.pyth.network", strategies, logger);
+const krakenWsUrl = "wss://ws.kraken.com/v2";
+const ls = new TypeSafeWebSocketClient(krakenWsUrl);
+
+ls.on("connected", () => {
+  // Compose the Kraken v2 Ticker subscription message for Level 1 (top of book)
+  const subscribeMessage = {
+    method: "subscribe",
+    params: {
+      channel: "ticker",
+      symbol: ["REKT/SOL"], // subscribe to REKT/USD; add more pairs if needed
+      event_trigger: "trades", // bbo = best-bid-offer (Level 1 updates)
+      snapshot: true, // request a snapshot immediately after subscribing
+    },
+    req_id: 1,
+  };
+  ls.send(subscribeMessage as any); // Use "as any" for compatibility with send's type constraints
+});
+
+ls.connect();
 
 await hermes.connect();
