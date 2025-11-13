@@ -70,7 +70,7 @@ export class Strategy {
       await this.safeExecute(async () => {
         const createPositionResult = await this.createPosition(marketPrice);
         if (createPositionResult == null || createPositionResult.position == null) {
-          console.error("Failed to create position");
+          this.logger.error("Failed to create position", null);
           return;
         }
         this.position = createPositionResult.position;
@@ -88,9 +88,6 @@ export class Strategy {
             oraclePrice: marketPrice,
           },
         });
-        if (this.position == null) {
-          console.error("Failed to create position");
-        }
       });
       return;
     }
@@ -164,7 +161,7 @@ export class Strategy {
 
     const currentPosition =
       removeLiquidityTxs.length > 0 ? await this.dlmm.getPosition(this.position.publicKey) : null;
-    const _feesClaimed =
+    const feesClaimed =
       currentPosition != null
         ? BigInt(
             currentPosition.positionData.feeXExcludeTransferFee
@@ -198,7 +195,7 @@ export class Strategy {
             timestamp: Date.now(),
             pair: this.pair.toString(),
             positionAddress: currentPosition?.publicKey.toString() ?? "",
-            feesClaimed: _feesClaimed,
+            feesClaimed,
             quoteRawAmount: BigInt(currentPosition?.positionData.totalYAmount ?? 0),
             baseRawAmount: BigInt(currentPosition?.positionData.totalXAmount ?? 0),
             transactionIds: txs,
@@ -263,8 +260,9 @@ export class Strategy {
     // I don't see us having positions with more than 70 bins. If we do in the future, we need to update this.
     // Currently getting some realloc erro when trying to create position with ~100 bins
     if (new BN(maxBinId - minBinId + 1) > DEFAULT_BIN_PER_POSITION) {
-      console.error(
+      this.logger.error(
         `Max bins per position exceeded: ${maxBinId - minBinId + 1} > ${DEFAULT_BIN_PER_POSITION}`,
+        null,
       );
       return null;
     }
