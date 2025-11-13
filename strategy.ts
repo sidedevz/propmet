@@ -3,13 +3,16 @@ import DLMM, {
   type LbPosition,
   DEFAULT_BIN_PER_POSITION,
 } from "@meteora-ag/dlmm";
-import { Keypair, Transaction, type PublicKey } from "@solana/web3.js";
+import type { Transaction, PublicKey } from "@solana/web3.js";
+import { Keypair } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
 import { WSOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
 import type { Logger } from "./logger";
+
+const maxNegativeVolatility = -10;
 
 export type StrategyConfig = {
   priceRangeDelta: number; // in basis points
@@ -33,6 +36,8 @@ export class Strategy {
   private positionFetched = false;
 
   private isBusy = false;
+
+  private strategyOpeningPrice = 1;
 
   constructor(
     private readonly solana: Solana,
@@ -65,6 +70,7 @@ export class Strategy {
     // If no position exists, create one
     if (this.position == null) {
       await this.safeExecute(async () => {
+        // Here initial volatility is 0
         this.position = await this.createPosition(marketPrice);
         if (this.position == null) {
           console.error("Failed to create position");
@@ -125,6 +131,13 @@ export class Strategy {
     }
 
     let removeLiquidityTxs: Transaction[] = [];
+
+    const volatility = (marketPrice / this.strategyOpeningPrice - 1) * 100;
+
+    // If volatility is -10, don't do anything
+    if (volatility <= maxNegativeVolatility) {
+      return;
+    }
 
     try {
       removeLiquidityTxs = await this.dlmm.removeLiquidity({
@@ -297,6 +310,8 @@ export class Strategy {
   }) {
     const inventory = await this.getInventory(args.marketPrice, args.minContextSlot);
 
+    const volatility = (args.marketPrice / this.strategyOpeningPrice - 1) * 100;
+
     const { marketPrice } = args;
     const { baseValue, quoteValue } = inventory;
 
@@ -317,7 +332,26 @@ export class Strategy {
               outputMint: this.baseToken.mint,
             };
 
-      const swapValue = Math.abs(baseValue - quoteValue) / 2; // this is in terms of quote token
+      let swapValue = Math.abs(baseValue - quoteValue) / 2; // this is in terms of quote token
+
+      // Volatility Protection Formula:
+      // We track volatility since the strategy's inception and cap drawdown at a maximum of -10%.
+      //
+      // Current method: always rebalance 50% of the net inventory difference:
+      //   Net difference * 0.5
+      //
+      // Proposed adjustment: adapt the rebalancing percentage based on negative volatility,
+      // decreasing the proportion in 1% steps (i.e., for each -1% in volatility, reduce by 5%).
+      //
+      // The formula becomes:
+      //   Net difference * (10 - x) / 20
+      //
+      // Where x = the absolute value of the negative volatility (for example, x=5 for -5% volatility).
+      // This means, for -5% volatility, only 25% of the difference is rebalanced.
+      // The adjustment applies only if volatility is negative (i.e., when the strategy is losing value).
+      if (volatility < 0 && inputMint === this.baseToken.mint) {
+        swapValue = (Math.abs(baseValue - quoteValue) * (10 + volatility)) / 20;
+      }
 
       /**
        * If inputMint is base, we need to convert the swapValue to the number of inputMint tokens
