@@ -1,0 +1,31 @@
+name: Tinybird
+run-name: Deploying Tinybird
+
+on:
+    workflow_dispatch:
+    push:
+        branches:
+            - develop
+            - main
+        paths:
+            - "tinybird/**"
+            - ".github/workflows/deploy-tinybird.yml"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.ref }}
+    cancel-in-progress: true
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        name: Deploy Tinybird
+        environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+        defaults:
+            run:
+                working-directory: "./tinybird"
+        steps:
+            - uses: actions/checkout@v3
+            - name: Install Tinybird CLI
+              run: curl https://tinybird.co | sh
+            - name: Deploy project
+              run: tb --cloud --host ${{ secrets.TB_FORWARD_HOST }} --token ${{ secrets.TB_FORWARD_TOKEN }} deploy

@@ -1,0 +1,17 @@
+SCHEMA >
+    `timestamp` Int64 `json:$.timestamp`,
+    `pair` LowCardinality(String) `json:$.pair`,
+    `positionAddress` String `json:$.positionAddress`,
+    `upperBinId` Int16 `json:$.upperBinId`,
+    `lowerBinId` Int16 `json:$.lowerBinId`,
+    `quoteRawAmount` Int64 `json:$.quoteRawAmount`,
+    `baseRawAmount` Int64 `json:$.baseRawAmount`,
+    `transactionId` String `json:$.transactionId`,
+    `oraclePrice` Decimal64(3) `json:$.oraclePrice`,
+    `insertTime` DateTime64(3) `json:$.insertTime` DEFAULT now()
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYYYYMM(toDateTime(toString(timestamp), 3))
+ENGINE_PRIMARY_KEY pair, timestamp
+ENGINE_SORTING_KEY pair, timestamp
+ENGINE_TTL toDate(toDateTime(toString(timestamp), 3)) + toIntervalDay(30)
