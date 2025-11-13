@@ -93,8 +93,8 @@ const POOL_CONFIGS: Record<
     userKeypair: posKeypair3, // IMPORTANT
     priceFeeds: ZEC_USDC_PRICE_FEEDS,
     poolAddress: ZENZEC_USDC_POOL_ADDRESS,
-    priceRangeDelta: 300,
-    inventorySkewThreshold: 3000,
+    priceRangeDelta: 500,
+    inventorySkewThreshold: 7000,
     rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
