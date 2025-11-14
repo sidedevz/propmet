@@ -35,19 +35,19 @@ export type SwapEvent = {
 
 export type Event =
   | {
-      type: "position";
+      type: "positions";
       event: PositionEvent;
     }
   | {
-      type: "withdrawal";
+      type: "withdrawals";
       event: WithdrawEvent;
     }
   | {
-      type: "swap";
+      type: "swaps";
       event: SwapEvent;
     };
 
-export class Clickhouse {
+export class Tinybird {
   private readonly url: string = "http://localhost:7181";
   private readonly token: string;
 
@@ -59,11 +59,11 @@ export class Clickhouse {
     this.token = args.token;
   }
 
-  async logEvent(event: Event) {
+  async logEvent({ event, type }: Event) {
     const jsonPayload = JSONStringifyWithBigInt(event);
     const compressedPayload = gzipSync(jsonPayload);
 
-    const response = await fetch(`${this.url}/v0/events?name=positions`, {
+    const response = await fetch(`${this.url}/v0/events?name=${type}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,

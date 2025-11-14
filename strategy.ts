@@ -10,7 +10,7 @@ import { WSOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
 import type { Logger } from "./logger";
-import type { Clickhouse } from "./clickhouse";
+import type { Tinybird } from "./tinybird";
 
 export type StrategyConfig = {
   priceRangeDelta: number; // in basis points
@@ -42,7 +42,7 @@ export class Strategy {
     private readonly userKeypair: Keypair,
     private readonly config: StrategyConfig,
     private readonly logger: Logger,
-    private readonly clickhouse: Clickhouse,
+    private readonly tinybird: Tinybird,
   ) {
     this.baseToken = {
       mint: dlmm.tokenX.mint.address,
@@ -74,8 +74,8 @@ export class Strategy {
           return;
         }
         this.position = createPositionResult.position;
-        await this.clickhouse.logEvent({
-          type: "position",
+        await this.tinybird.logEvent({
+          type: "positions",
           event: {
             timestamp: Date.now(),
             pair: this.pair.toString(),
@@ -169,6 +169,7 @@ export class Strategy {
               .toString(),
           )
         : BigInt(0);
+
     const txs: string[] = [];
     for (const tx of removeLiquidityTxs) {
       tx.partialSign(this.userKeypair);
@@ -189,8 +190,8 @@ export class Strategy {
     try {
       const [createPositionResult] = await Promise.all([
         this.createPosition(marketPrice, maxLandedSlot),
-        this.clickhouse.logEvent({
-          type: "withdrawal",
+        this.tinybird.logEvent({
+          type: "withdrawals",
           event: {
             timestamp: Date.now(),
             pair: this.pair.toString(),
@@ -208,8 +209,8 @@ export class Strategy {
       }
 
       this.position = createPositionResult.position;
-      await this.clickhouse.logEvent({
-        type: "position",
+      await this.tinybird.logEvent({
+        type: "positions",
         event: {
           timestamp: Date.now(),
           pair: this.pair.toString(),
@@ -419,8 +420,8 @@ export class Strategy {
 
       const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
 
-      await this.clickhouse.logEvent({
-        type: "swap",
+      await this.tinybird.logEvent({
+        type: "swaps",
         event: {
           timestamp: Date.now(),
           pair: this.pair.toString(),

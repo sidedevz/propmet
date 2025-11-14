@@ -6,7 +6,7 @@ import { Solana } from "./solana";
 import { HermesWS } from "./hermes_ws";
 import { SlackLogger } from "./logger/slack";
 import { ConsoleLogger } from "./logger/console";
-import { Clickhouse } from "./clickhouse";
+import { Tinybird } from "./tinybird";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -51,7 +51,7 @@ const solana = new Solana({
   ws: process.env.WS_RPC_URL!,
 });
 
-const clickhouse = new Clickhouse({
+const tinybird = new Tinybird({
   url: process.env.CLICKHOUSE_URL,
   token: process.env.CLICKHOUSE_TOKEN!,
 });
@@ -149,7 +149,7 @@ const strategies = await Promise.all(
         poolConfig.userKeypair,
         poolConfig,
         logger,
-        clickhouse,
+        tinybird,
       ),
       priceFeeds: poolConfig.priceFeeds,
     };
