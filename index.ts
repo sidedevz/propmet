@@ -113,7 +113,7 @@ const POOL_CONFIGS: Record<
     poolAddress: ZENZEC_USDC_POOL_ADDRESS,
     priceRangeDelta: 500,
     inventorySkewThreshold: 6000,
-    rebalanceThreshold: 6000,
+    rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
   },
