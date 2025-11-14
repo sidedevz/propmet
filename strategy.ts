@@ -34,6 +34,7 @@ export class Strategy {
   private positionFetched = false;
 
   private isBusy = false;
+  private positionOpeningPrice = 0;
 
   constructor(
     readonly pair: string,
