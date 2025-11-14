@@ -3,13 +3,14 @@ import DLMM, {
   type LbPosition,
   DEFAULT_BIN_PER_POSITION,
 } from "@meteora-ag/dlmm";
-import { Keypair, Transaction, type PublicKey } from "@solana/web3.js";
+import { Keypair, type Transaction, type PublicKey } from "@solana/web3.js";
 import { getTokenBalance, type Solana } from "./solana";
 import { BN } from "bn.js";
 import { WSOL_MINT } from "./const";
 import { executeJupUltraOrder, getJupUltraOrder } from "./jup-utils";
 import { retry } from "./retry";
 import type { Logger } from "./logger";
+import type { Tinybird } from "./tinybird";
 
 export type StrategyConfig = {
   priceRangeDelta: number; // in basis points
@@ -35,11 +36,13 @@ export class Strategy {
   private isBusy = false;
 
   constructor(
+    readonly pair: string,
     private readonly solana: Solana,
     private readonly dlmm: DLMM,
     private readonly userKeypair: Keypair,
     private readonly config: StrategyConfig,
     private readonly logger: Logger,
+    private readonly tinybird: Tinybird,
   ) {
     this.baseToken = {
       mint: dlmm.tokenX.mint.address,
@@ -65,10 +68,26 @@ export class Strategy {
     // If no position exists, create one
     if (this.position == null) {
       await this.safeExecute(async () => {
-        this.position = await this.createPosition(marketPrice);
-        if (this.position == null) {
-          console.error("Failed to create position");
+        const createPositionResult = await this.createPosition(marketPrice);
+        if (createPositionResult == null || createPositionResult.position == null) {
+          this.logger.error("Failed to create position", null);
+          return;
         }
+        this.position = createPositionResult.position;
+        await this.tinybird.logEvent({
+          type: "positions",
+          event: {
+            timestamp: Date.now(),
+            pair: this.pair.toString(),
+            positionAddress: this.position?.publicKey.toString() ?? "",
+            upperBinId: this.position?.positionData.upperBinId ?? 0,
+            lowerBinId: this.position?.positionData.lowerBinId ?? 0,
+            quoteRawAmount: BigInt(this.position?.positionData.totalYAmount ?? 0),
+            baseRawAmount: BigInt(this.position?.positionData.totalXAmount ?? 0),
+            transactionId: createPositionResult.transactionId,
+            oraclePrice: marketPrice,
+          },
+        });
       });
       return;
     }
@@ -140,6 +159,17 @@ export class Strategy {
       this.logger.error("Failure creating removeLiquidity Ixs", e);
     }
 
+    const currentPosition =
+      removeLiquidityTxs.length > 0 ? await this.dlmm.getPosition(this.position.publicKey) : null;
+    const feesClaimed =
+      currentPosition != null
+        ? BigInt(
+            currentPosition.positionData.feeXExcludeTransferFee
+              .add(currentPosition.positionData.feeYExcludeTransferFee)
+              .toString(),
+          )
+        : BigInt(0);
+
     const txs: string[] = [];
     for (const tx of removeLiquidityTxs) {
       tx.partialSign(this.userKeypair);
@@ -158,10 +188,41 @@ export class Strategy {
     this.position = null;
 
     try {
-      this.position = await this.createPosition(marketPrice, maxLandedSlot);
-      if (this.position == null) {
+      const [createPositionResult] = await Promise.all([
+        this.createPosition(marketPrice, maxLandedSlot),
+        this.tinybird.logEvent({
+          type: "withdrawals",
+          event: {
+            timestamp: Date.now(),
+            pair: this.pair.toString(),
+            positionAddress: currentPosition?.publicKey.toString() ?? "",
+            feesClaimed,
+            quoteRawAmount: BigInt(currentPosition?.positionData.totalYAmount ?? 0),
+            baseRawAmount: BigInt(currentPosition?.positionData.totalXAmount ?? 0),
+            transactionIds: txs,
+          },
+        }),
+      ]);
+
+      if (createPositionResult == null || createPositionResult.position == null) {
         throw new Error("Failed to create new position after closing old position");
       }
+
+      this.position = createPositionResult.position;
+      await this.tinybird.logEvent({
+        type: "positions",
+        event: {
+          timestamp: Date.now(),
+          pair: this.pair.toString(),
+          positionAddress: this.position?.publicKey.toString() ?? "",
+          upperBinId: this.position?.positionData.upperBinId ?? 0,
+          lowerBinId: this.position?.positionData.lowerBinId ?? 0,
+          quoteRawAmount: BigInt(this.position?.positionData.totalYAmount ?? 0),
+          baseRawAmount: BigInt(this.position?.positionData.totalXAmount ?? 0),
+          transactionId: createPositionResult.transactionId,
+          oraclePrice: marketPrice,
+        },
+      });
     } catch (error: any) {
       // Position is already null, but we've closed the old one
       this.logger.error("Failed to create position after rebalance", error);
@@ -172,7 +233,7 @@ export class Strategy {
   private async createPosition(
     marketPrice: number,
     minContextSlot?: number,
-  ): Promise<LbPosition | null> {
+  ): Promise<{ position: LbPosition | null; transactionId: string } | null> {
     const inventory = await this.tryRebalanceInventory({
       marketPrice,
       minContextSlot,
@@ -200,8 +261,9 @@ export class Strategy {
     // I don't see us having positions with more than 70 bins. If we do in the future, we need to update this.
     // Currently getting some realloc erro when trying to create position with ~100 bins
     if (new BN(maxBinId - minBinId + 1) > DEFAULT_BIN_PER_POSITION) {
-      console.error(
+      this.logger.error(
         `Max bins per position exceeded: ${maxBinId - minBinId + 1} > ${DEFAULT_BIN_PER_POSITION}`,
+        null,
       );
       return null;
     }
@@ -255,7 +317,7 @@ export class Strategy {
       },
     );
 
-    return newPosition;
+    return { position: newPosition, transactionId: createBalancePositionTxHash };
   }
 
   // Price is in terms of quote/base
@@ -298,7 +360,12 @@ export class Strategy {
     const inventory = await this.getInventory(args.marketPrice, args.minContextSlot);
 
     const { marketPrice } = args;
-    const { baseValue, quoteValue } = inventory;
+    const {
+      baseValue,
+      quoteValue,
+      baseBalance: initialBaseBalance,
+      quoteBalance: initialQuoteBalance,
+    } = inventory;
 
     // Check ratio for inventory assets
     const difference = Math.abs(1 - baseValue / quoteValue);
@@ -353,6 +420,18 @@ export class Strategy {
 
       const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
 
+      await this.tinybird.logEvent({
+        type: "swaps",
+        event: {
+          timestamp: Date.now(),
+          pair: this.pair.toString(),
+          initialQuoteRawAmount: BigInt(initialQuoteBalance),
+          initialBaseRawAmount: BigInt(initialBaseBalance),
+          finalQuoteRawAmount: BigInt(updatedInventory.quoteBalance),
+          finalBaseRawAmount: BigInt(updatedInventory.baseBalance),
+          transactionId: executeResult.signature,
+        },
+      });
       return updatedInventory;
     }
 
