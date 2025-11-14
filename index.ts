@@ -6,6 +6,7 @@ import { Solana } from "./solana";
 import { HermesWS } from "./hermes_ws";
 import { SlackLogger } from "./logger/slack";
 import { ConsoleLogger } from "./logger/console";
+import { Tinybird } from "./tinybird";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -26,6 +27,10 @@ if (!process.env.POS_SECRET_KEY_3) {
   throw new Error("POS_SECRET_KEY_3 environment variable is not set.");
 }
 
+if (!process.env.CLICKHOUSE_TOKEN || !process.env.CLICKHOUSE_URL) {
+  throw new Error("CLICKHOUSE_URL and CLICKHOUSE_TOKEN environment variables are not set.");
+}
+
 if (!process.env.POOL) {
   throw new Error("POOL environment variable is not set.");
 }
@@ -44,6 +49,11 @@ const solana = new Solana({
   read: process.env.READ_RPC_URL!,
   write: process.env.WRITE_RPC_URL!,
   ws: process.env.WS_RPC_URL!,
+});
+
+const tinybird = new Tinybird({
+  url: process.env.CLICKHOUSE_URL,
+  token: process.env.CLICKHOUSE_TOKEN!,
 });
 
 // You can get your desired pool address from the API https://dlmm-api.meteora.ag/pair/all
@@ -67,9 +77,15 @@ const ZEC_USDC_PRICE_FEEDS = [
 
 const POOL_CONFIGS: Record<
   string,
-  { priceFeeds: string[]; poolAddress: PublicKey; userKeypair: Keypair } & StrategyConfig
+  {
+    name: string;
+    priceFeeds: string[];
+    poolAddress: PublicKey;
+    userKeypair: Keypair;
+  } & StrategyConfig
 > = {
   "fluid/usdc": {
+    name: "fluid/usdc",
     userKeypair: posKeypair1, // IMPORTANT
     priceFeeds: FLUID_USDC_PRICE_FEEDS,
     poolAddress: FLUID_USDC_POOL_ADDRESS,
@@ -80,6 +96,7 @@ const POOL_CONFIGS: Record<
     type: StrategyType.BidAsk,
   },
   "hype/usdc": {
+    name: "hype/usdc",
     userKeypair: posKeypair2, // IMPORTANT
     priceFeeds: HYPE_USDC_PRICE_FEEDS,
     poolAddress: HYPE_USDC_POOL_ADDRESS,
@@ -90,6 +107,7 @@ const POOL_CONFIGS: Record<
     type: StrategyType.BidAsk,
   },
   "zenzec/usdc": {
+    name: "zenzec/usdc",
     userKeypair: posKeypair3, // IMPORTANT
     priceFeeds: ZEC_USDC_PRICE_FEEDS,
     poolAddress: ZENZEC_USDC_POOL_ADDRESS,
@@ -124,7 +142,15 @@ const strategies = await Promise.all(
   selectedPoolConfigs.map(async (poolConfig) => {
     const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
     return {
-      strategy: new Strategy(solana, dlmm, poolConfig.userKeypair, poolConfig, logger),
+      strategy: new Strategy(
+        poolConfig.name,
+        solana,
+        dlmm,
+        poolConfig.userKeypair,
+        poolConfig,
+        logger,
+        tinybird,
+      ),
       priceFeeds: poolConfig.priceFeeds,
     };
   }),
