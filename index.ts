@@ -112,7 +112,7 @@ const POOL_CONFIGS: Record<
     priceFeeds: ZEC_USDC_PRICE_FEEDS,
     poolAddress: ZENZEC_USDC_POOL_ADDRESS,
     priceRangeDelta: 500,
-    inventorySkewThreshold: 6000,
+    inventorySkewThreshold: 5000,
     rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
