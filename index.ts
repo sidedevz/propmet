@@ -3,10 +3,10 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { Strategy, type StrategyConfig } from "./strategy";
 import "dotenv/config";
 import { Solana } from "./solana";
-import { HermesWS } from "./hermes_ws";
 import { SlackLogger } from "./logger/slack";
 import { ConsoleLogger } from "./logger/console";
 import { Tinybird } from "./tinybird";
+import { KrakenWebSocket } from "./ws/kraken_ws";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -24,6 +24,10 @@ if (!process.env.POS_SECRET_KEY_2) {
 }
 
 if (!process.env.POS_SECRET_KEY_3) {
+  throw new Error("POS_SECRET_KEY_3 environment variable is not set.");
+}
+
+if (!process.env.POS_SECRET_KEY_4) {
   throw new Error("POS_SECRET_KEY_3 environment variable is not set.");
 }
 
@@ -45,6 +49,10 @@ const posKeypair3 = Keypair.fromSecretKey(
   Uint8Array.from(process.env.POS_SECRET_KEY_3.split(",").map((v) => Number(v.trim()))),
 );
 
+const posKeypair4 = Keypair.fromSecretKey(
+  Uint8Array.from(process.env.POS_SECRET_KEY_4.split(",").map((v) => Number(v.trim()))),
+);
+
 const solana = new Solana({
   read: process.env.READ_RPC_URL!,
   write: process.env.WRITE_RPC_URL!,
@@ -61,6 +69,7 @@ const tinybird = new Tinybird({
 const FLUID_USDC_POOL_ADDRESS = new PublicKey("J4hpmK1KQ6GsWotEck1syzU7gM7kZQ5sPctfkY9gV6wW");
 const HYPE_USDC_POOL_ADDRESS = new PublicKey("ANCx141SujgVdbKz9NTEH8F38qWsnyyXsVju64aU3qLB");
 const ZENZEC_USDC_POOL_ADDRESS = new PublicKey("3pss9YFM4tsMR8EAbusPVUZnYMex6jSduivDZUPPLTVr");
+const REKT_USDC_POOL_ADDRESS = new PublicKey("BCpHz4VSbRg55T5kcVWWE9tcQPscvjt1FfbKHaxPfynk");
 
 const FLUID_USDC_PRICE_FEEDS = [
   // FLUID-USD
@@ -82,6 +91,7 @@ const POOL_CONFIGS: Record<
     priceFeeds: string[];
     poolAddress: PublicKey;
     userKeypair: Keypair;
+    oracle: "hermes" | "base";
   } & StrategyConfig
 > = {
   "fluid/usdc": {
@@ -94,6 +104,7 @@ const POOL_CONFIGS: Record<
     rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
+    oracle: "hermes",
   },
   "hype/usdc": {
     name: "hype/usdc",
@@ -105,6 +116,7 @@ const POOL_CONFIGS: Record<
     rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
+    oracle: "hermes",
   },
   "zenzec/usdc": {
     name: "zenzec/usdc",
@@ -116,6 +128,19 @@ const POOL_CONFIGS: Record<
     rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
+    oracle: "hermes",
+  },
+  "rekt/usdc": {
+    name: "rekt/usdc",
+    userKeypair: posKeypair4, // IMPORTANT
+    priceFeeds: ["REKT/USD"],
+    poolAddress: REKT_USDC_POOL_ADDRESS,
+    priceRangeDelta: 1000,
+    inventorySkewThreshold: 4000,
+    rebalanceThreshold: 8000,
+    maxRebalanceSlippage: 500,
+    type: StrategyType.BidAsk,
+    oracle: "base",
   },
 };
 
@@ -138,24 +163,47 @@ const logger =
     ? new ConsoleLogger()
     : new SlackLogger(process.env.SLACK_TOKEN, process.env.SLACK_ALERT_CHANNEL_ID);
 
-const strategies = await Promise.all(
-  selectedPoolConfigs.map(async (poolConfig) => {
-    const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
-    return {
-      strategy: new Strategy(
-        poolConfig.name,
-        solana,
-        dlmm,
-        poolConfig.userKeypair,
-        poolConfig,
-        logger,
-        tinybird,
-      ),
-      priceFeeds: poolConfig.priceFeeds,
-    };
-  }),
+// const hermesStrategies = await Promise.all(
+//   selectedPoolConfigs
+//     .filter((s) => s.oracle === "hermes")
+//     .map(async (poolConfig) => {
+//       const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
+//       return {
+//         strategy: new Strategy(
+//           poolConfig.name,
+//           solana,
+//           dlmm,
+//           poolConfig.userKeypair,
+//           poolConfig,
+//           logger,
+//           tinybird,
+//         ),
+//         priceFeeds: poolConfig.priceFeeds,
+//       };
+//     }),
+// );
+
+const websocketStrategies = await Promise.all(
+  selectedPoolConfigs
+    .filter((s) => s.oracle === "base")
+    .map(async (poolConfig) => {
+      const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
+      return {
+        strategy: new Strategy(
+          poolConfig.name,
+          solana,
+          dlmm,
+          poolConfig.userKeypair,
+          poolConfig,
+          logger,
+          tinybird,
+        ),
+        symbolFeeds: poolConfig.priceFeeds,
+      };
+    }),
 );
 
-const hermes = new HermesWS("https://hermes.pyth.network", strategies, logger);
+// const hermes = new HermesWS("https://hermes.pyth.network", strategies, logger);
+const base = new KrakenWebSocket("wss://ws.kraken.com/v2", websocketStrategies, logger);
 
-await hermes.connect();
+await base.connect();
