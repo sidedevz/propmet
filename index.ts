@@ -7,6 +7,7 @@ import { SlackLogger } from "./logger/slack";
 import { ConsoleLogger } from "./logger/console";
 import { Tinybird } from "./tinybird";
 import { KrakenWebSocket } from "./ws/kraken_ws";
+import { HermesWS } from "./ws/hermes_ws";
 
 if (!process.env.READ_RPC_URL) {
   throw new Error("READ_RPC_URL environment variable is not set.");
@@ -28,7 +29,7 @@ if (!process.env.POS_SECRET_KEY_3) {
 }
 
 if (!process.env.POS_SECRET_KEY_4) {
-  throw new Error("POS_SECRET_KEY_3 environment variable is not set.");
+  throw new Error("POS_SECRET_KEY_4 environment variable is not set.");
 }
 
 if (!process.env.CLICKHOUSE_TOKEN || !process.env.CLICKHOUSE_URL) {
@@ -163,25 +164,25 @@ const logger =
     ? new ConsoleLogger()
     : new SlackLogger(process.env.SLACK_TOKEN, process.env.SLACK_ALERT_CHANNEL_ID);
 
-// const hermesStrategies = await Promise.all(
-//   selectedPoolConfigs
-//     .filter((s) => s.oracle === "hermes")
-//     .map(async (poolConfig) => {
-//       const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
-//       return {
-//         strategy: new Strategy(
-//           poolConfig.name,
-//           solana,
-//           dlmm,
-//           poolConfig.userKeypair,
-//           poolConfig,
-//           logger,
-//           tinybird,
-//         ),
-//         priceFeeds: poolConfig.priceFeeds,
-//       };
-//     }),
-// );
+const hermesStrategies = await Promise.all(
+  selectedPoolConfigs
+    .filter((s) => s.oracle === "hermes")
+    .map(async (poolConfig) => {
+      const dlmm = await DLMM.create(solana.connection, poolConfig.poolAddress);
+      return {
+        strategy: new Strategy(
+          poolConfig.name,
+          solana,
+          dlmm,
+          poolConfig.userKeypair,
+          poolConfig,
+          logger,
+          tinybird,
+        ),
+        priceFeeds: poolConfig.priceFeeds,
+      };
+    }),
+);
 
 const websocketStrategies = await Promise.all(
   selectedPoolConfigs
@@ -203,7 +204,8 @@ const websocketStrategies = await Promise.all(
     }),
 );
 
-// const hermes = new HermesWS("https://hermes.pyth.network", strategies, logger);
+const hermes = new HermesWS("https://hermes.pyth.network", hermesStrategies, logger);
 const base = new KrakenWebSocket("wss://ws.kraken.com/v2", websocketStrategies, logger);
 
+await hermes.connect();
 await base.connect();

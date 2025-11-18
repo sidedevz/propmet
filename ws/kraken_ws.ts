@@ -128,7 +128,7 @@ export class KrakenWebSocket implements WebSocketInterface {
   }
 
   async onError(error: any) {
-    this.logger.error("Error receiving updates:", {
+    this.logger.error("Error receiving updates from kraken:", {
       ...error,
       message: error?.message ?? "Unknown error",
     });
