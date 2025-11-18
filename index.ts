@@ -89,8 +89,8 @@ const POOL_CONFIGS: Record<
     userKeypair: posKeypair1, // IMPORTANT
     priceFeeds: FLUID_USDC_PRICE_FEEDS,
     poolAddress: FLUID_USDC_POOL_ADDRESS,
-    priceRangeDelta: 300,
-    inventorySkewThreshold: 3000,
+    priceRangeDelta: 500,
+    inventorySkewThreshold: 4000,
     rebalanceThreshold: 8000,
     maxRebalanceSlippage: 500,
     type: StrategyType.BidAsk,
