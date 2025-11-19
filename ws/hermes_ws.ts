@@ -1,22 +1,23 @@
 import { HermesClient } from "@pythnetwork/hermes-client";
-import type { Strategy } from "./strategy";
+import type { Strategy } from "../strategy";
 import type { EventSource, ErrorEvent } from "eventsource";
-import type { Logger } from "./logger";
+import type { Logger } from "../logger";
+import type { WebSocket } from "./interface";
 
-export class HermesWS {
+export class HermesWS implements WebSocket {
   private client: HermesClient;
   private eventSource: EventSource | null = null;
 
   constructor(
-    url: string,
+    private readonly url: string,
     private readonly strategies: { strategy: Strategy; priceFeeds: string[] }[],
     private readonly logger: Logger,
   ) {
-    this.client = new HermesClient(url, {});
+    this.client = new HermesClient(this.url, {});
   }
 
   async connect() {
-    if (this.eventSource != null) {
+    if (this.eventSource != null || this.strategies.length === 0) {
       return;
     }
 
@@ -114,8 +115,8 @@ export class HermesWS {
     };
   }
 
-  private async onError(error: ErrorEvent) {
-    this.logger.error("Error receiving updates:", {
+  async onError(error: ErrorEvent) {
+    this.logger.error("Error receiving updates from Hermes:", {
       message: error.message ?? "Unknown error",
       ...error,
     });
