@@ -17,7 +17,7 @@ export class HermesWS implements WebSocket {
   }
 
   async connect() {
-    if (this.eventSource != null) {
+    if (this.eventSource != null || this.strategies.length === 0) {
       return;
     }
 
@@ -116,7 +116,7 @@ export class HermesWS implements WebSocket {
   }
 
   async onError(error: ErrorEvent) {
-    this.logger.error("Error receiving updates:", {
+    this.logger.error("Error receiving updates from Hermes:", {
       message: error.message ?? "Unknown error",
       ...error,
     });

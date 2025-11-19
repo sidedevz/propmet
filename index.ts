@@ -184,6 +184,11 @@ const hermesStrategies = await Promise.all(
     }),
 );
 
+console.log(
+  "hermesStrategies",
+  selectedPoolConfigs.filter((s) => s.oracle === "hermes"),
+);
+
 const websocketStrategies = await Promise.all(
   selectedPoolConfigs
     .filter((s) => s.oracle === "base")
@@ -207,5 +212,4 @@ const websocketStrategies = await Promise.all(
 const hermes = new HermesWS("https://hermes.pyth.network", hermesStrategies, logger);
 const base = new KrakenWebSocket("wss://ws.kraken.com/v2", websocketStrategies, logger);
 
-await hermes.connect();
-await base.connect();
+await Promise.all([hermes.connect(), base.connect()]);

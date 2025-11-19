@@ -33,6 +33,11 @@ export class KrakenWebSocket implements WebSocketInterface {
       console.log("Client already initialized");
       return;
     }
+    if (this.strategies.length === 0) {
+      console.log("No strategies to run");
+      return;
+    }
+
     const newClient = new WebSocket(this.url);
     // Subscribe to the Kraken websocket API for ticker updates for all required symbols
     // Documentation: https://docs.kraken.com/websockets/v2#operation/subscribe

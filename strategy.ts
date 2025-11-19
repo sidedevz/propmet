@@ -271,7 +271,6 @@ export class Strategy {
     const positionKeypair = Keypair.generate();
 
     await this.dlmm.refetchStates();
-
     //For the record, if >26 bins are created for the bin spread we would have multiple txs
     const createPositionTx = await this.dlmm.initializePositionAndAddLiquidityByStrategy({
       positionPubKey: positionKeypair.publicKey,
