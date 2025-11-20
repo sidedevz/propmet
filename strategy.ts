@@ -18,6 +18,7 @@ export type StrategyConfig = {
   type: StrategyType;
   rebalanceThreshold: number; // in basis points
   maxRebalanceSlippage: number; // in basis points
+  stopLossThreshold?: number; // in basis points
 };
 
 export class Strategy {
@@ -34,6 +35,7 @@ export class Strategy {
   private positionFetched = false;
 
   private isBusy = false;
+  private stopLossPrice: number | null = null;
 
   constructor(
     readonly pair: string,
@@ -63,6 +65,11 @@ export class Strategy {
     // Ensure we have a position (fetch it if needed, but don't create yet)
     if (!this.positionFetched) {
       await this.fetchExistingPosition();
+    }
+
+    // Only add stop loss price when it does not exist
+    if (this.config.stopLossThreshold != null && this.stopLossPrice == null) {
+      this.stopLossPrice = marketPrice * (1 - this.config.stopLossThreshold / 10000);
     }
 
     // If no position exists, create one
@@ -186,6 +193,12 @@ export class Strategy {
 
     // Reset position after remove liquidity tx validated
     this.position = null;
+
+    if (this.stopLossPrice != null && this.stopLossPrice <= marketPrice) {
+      // Do not create new position and leave everything as quote token to avoid losing more value.
+      await this.safeguardInventory({ marketPrice });
+      return;
+    }
 
     try {
       const [createPositionResult] = await Promise.all([
@@ -435,6 +448,71 @@ export class Strategy {
     }
 
     return inventory;
+  }
+
+  // Covnert all the inventory to the quote token if the stop loss is hit
+  async safeguardInventory(args: {
+    marketPrice: number; // in terms of quote per base (quote/base)
+    minContextSlot?: number;
+  }) {
+    const { marketPrice, minContextSlot } = args;
+    const inventory = await this.getInventory(marketPrice, minContextSlot);
+    const {
+      baseValue,
+      quoteValue,
+      baseBalance: initialBaseBalance,
+      quoteBalance: initialQuoteBalance,
+    } = inventory;
+
+    const { inputMint, inputDecimals, outputMint } = {
+      inputMint: this.baseToken.mint,
+      inputDecimals: this.baseToken.decimals,
+      outputMint: this.quoteToken.mint,
+    };
+
+    const swapValue = Math.abs(baseValue - quoteValue);
+
+    const inputAmount = swapValue / args.marketPrice;
+
+    const jupUltraOrder = await retry(
+      async () => {
+        return await getJupUltraOrder(
+          inputMint,
+          outputMint,
+          inputAmount * 10 ** inputDecimals, // converting to raw token amount
+          this.userKeypair.publicKey,
+          this.config.maxRebalanceSlippage,
+        );
+      },
+      {
+        maxRetries: 30,
+        initialDelay: 1000,
+        maxDelay: 5 * 60 * 1000, // 5 minutes
+      },
+    );
+
+    const executeResult = await executeJupUltraOrder(
+      jupUltraOrder.transaction,
+      jupUltraOrder.requestId,
+      this.userKeypair,
+    );
+
+    const updatedInventory = await this.getInventory(marketPrice, Number(executeResult.slot));
+
+    await this.tinybird.logEvent({
+      type: "swaps",
+      event: {
+        timestamp: Date.now(),
+        pair: this.pair.toString(),
+        initialQuoteRawAmount: BigInt(initialQuoteBalance),
+        initialBaseRawAmount: BigInt(initialBaseBalance),
+        finalQuoteRawAmount: BigInt(updatedInventory.quoteBalance),
+        finalBaseRawAmount: BigInt(updatedInventory.baseBalance),
+        transactionId: executeResult.signature,
+      },
+    });
+
+    return updatedInventory;
   }
 
   private async safeExecute<T>(callback: () => T | Promise<T>): Promise<T | null> {
