@@ -184,11 +184,6 @@ const hermesStrategies = await Promise.all(
     }),
 );
 
-console.log(
-  "hermesStrategies",
-  selectedPoolConfigs.filter((s) => s.oracle === "hermes"),
-);
-
 const websocketStrategies = await Promise.all(
   selectedPoolConfigs
     .filter((s) => s.oracle === "base")
